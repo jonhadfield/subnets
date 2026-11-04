@@ -68,6 +68,36 @@ func TestSheet(t *testing.T) {
 	}
 }
 
+func TestSheetIPv6(t *testing.T) {
+	out, err := run(t, "sheet", "--ipv6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"/64", "ffff:ffff:ffff:ffff::", "LAN / SLAAC"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("IPv6 cheatsheet missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestShowIPv6(t *testing.T) {
+	out, err := run(t, "2001:db8::1/64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"2001:db8::1/64",
+		"2001:db8::/64",
+		"IPv6",
+		"Documentation",
+		"2001:db8::ffff:ffff:ffff:ffff",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q\n%s", want, out)
+		}
+	}
+}
+
 func TestHostsAWS(t *testing.T) {
 	out, err := run(t, "hosts", "192.168.0.0/28", "--aws")
 	if err != nil {
@@ -75,6 +105,22 @@ func TestHostsAWS(t *testing.T) {
 	}
 	if !strings.Contains(out, "VPC router") {
 		t.Fatalf("hosts missing AWS roles\n%s", out)
+	}
+}
+
+func TestHostsLimit(t *testing.T) {
+	out, err := run(t, "hosts", "10.0.0.0/24", "--limit", "4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "showing first 4 of 256 addresses") {
+		t.Fatalf("missing truncation note\n%s", out)
+	}
+	if !strings.Contains(out, "raise --limit") {
+		t.Fatalf("missing --limit hint\n%s", out)
+	}
+	if strings.Contains(out, "10.0.0.4") {
+		t.Fatalf("printed past --limit\n%s", out)
 	}
 }
 

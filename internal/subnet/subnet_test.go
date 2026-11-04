@@ -197,6 +197,31 @@ func TestIPv4Sheet(t *testing.T) {
 	}
 }
 
+func TestIPv6Sheet(t *testing.T) {
+	rows := IPv6Sheet()
+	if len(rows) == 0 {
+		t.Fatal("expected IPv6 sheet rows")
+	}
+	var row SheetRow
+	found := false
+	for _, r := range rows {
+		if r.Prefix == 64 {
+			row = r
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("missing /64 row")
+	}
+	if row.Mask != "ffff:ffff:ffff:ffff::" {
+		t.Fatalf("/64 mask: got %s", row.Mask)
+	}
+	if row.Note != "LAN / SLAAC" {
+		t.Fatalf("/64 note: got %s", row.Note)
+	}
+}
+
 func TestFormatNumber(t *testing.T) {
 	if got := FormatNumber(big.NewInt(16)); got != "16" {
 		t.Fatalf("got %s", got)

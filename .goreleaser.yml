@@ -1,0 +1,101 @@
+version: 2
+
+project_name: subnets
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: subnets
+    main: ./cmd/subnets
+    binary: subnets
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/jonhadfield/subnets/internal/cli.Version={{.Version}}
+
+# Sign and notarize the darwin binaries so macOS Gatekeeper does not refuse a
+# tarball downloaded straight from the releases page. Uses goreleaser's
+# cross-platform (quill) implementation, so no macOS runner is needed. The
+# enabled guard keeps snapshot and fork builds working when the secrets are
+# absent; both the certificate and the notary key are required, since signing
+# without usable notary credentials would fail the release outright.
+notarize:
+  macos:
+    - enabled: '{{ and (isEnvSet "MACOS_SIGN_P12") (isEnvSet "MACOS_NOTARY_KEY") }}'
+      ids:
+        - subnets
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - none*
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+
+homebrew_casks:
+  - name: subnets
+    binaries: [subnets]
+    repository:
+      owner: jonhadfield
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/jonhadfield/subnets
+    description: IPv4/IPv6 subnet calculator CLI
+    # The darwin binaries may be signed and notarized, but a notarization
+    # ticket cannot be stapled into a bare Mach-O executable, so Gatekeeper
+    # reports "Notary Ticket Missing" and blocks first run. Casks set the
+    # quarantine flag on download, so clear it here.
+    #
+    # goreleaser's hooks.post.install emits a `postflight` block, which Homebrew
+    # 7 deprecates in favour of `postflight_steps`, warning on every install and
+    # update. That is not a rename: postflight_steps takes declarative steps
+    # rather than arbitrary Ruby, so the body is rewritten and injected through
+    # custom_block instead. Revert to hooks once goreleaser emits
+    # postflight_steps itself.
+    custom_block: |
+      # staged_path is a Homebrew template token, not the Ruby method the
+      # postflight block used, and goreleaser renders this through Go's
+      # templating first, so the braces are escaped to survive it.
+      postflight_steps do
+        run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ `{{staged_path}}` }}/subnets"], must_succeed: false
+      end
+
+release:
+  github:
+    owner: jonhadfield
+    name: subnets
+  prerelease: auto
+  name_template: "{{ .Tag }}"
+
+announce:
+  skip: true
+
+snapshot:
+  version_template: "{{ .Tag }}-devel"

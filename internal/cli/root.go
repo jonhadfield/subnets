@@ -8,7 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.1.0"
+// Version is the build version. Override at link time:
+//
+//	-ldflags "-X github.com/jonhadfield/subnets/internal/cli.Version=1.2.3"
+var Version = "dev"
 
 type options struct {
 	aws   bool
@@ -22,7 +25,7 @@ func NewRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "subnets [cidr]",
 		Short:         "IP subnet calculator and cheatsheet",
-		Version:       version,
+		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.MaximumNArgs(1),
