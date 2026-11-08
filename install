@@ -127,19 +127,32 @@ if [ ! -d "${install_dir}" ]; then
     fi
 fi
 
+dest="${install_dir}/${repo}"
+used_sudo=0
 if [ -w "${install_dir}" ]; then
-    install -m 0755 "${work}/${repo}" "${install_dir}/${repo}" ||
-        fail "could not write ${install_dir}/${repo}"
+    install -m 0755 "${work}/${repo}" "${dest}" ||
+        fail "could not write ${dest}"
 elif command -v sudo >/dev/null 2>&1; then
     echo "${install_dir} is not writable, using sudo"
-    sudo install -m 0755 "${work}/${repo}" "${install_dir}/${repo}" ||
-        fail "could not write ${install_dir}/${repo} with sudo"
+    sudo install -m 0755 "${work}/${repo}" "${dest}" ||
+        fail "could not write ${dest} with sudo"
+    used_sudo=1
 else
     fail "${install_dir} is not writable and sudo is not available; set SUBNETS_INSTALL_DIR to somewhere you can write"
 fi
 
+# Gatekeeper sets com.apple.quarantine on curl-downloaded binaries. Best-effort
+# clear, matching the Homebrew cask postflight. Absence of the attribute is fine.
+if [ "${os}" = "darwin" ]; then
+    if [ "${used_sudo}" -eq 1 ]; then
+        sudo xattr -dr com.apple.quarantine "${dest}" 2>/dev/null || true
+    else
+        xattr -dr com.apple.quarantine "${dest}" 2>/dev/null || true
+    fi
+fi
+
 echo "[4/4] Done"
-echo "${repo} ${version} installed to ${install_dir}/${repo}"
+echo "${repo} ${version} installed to ${dest}"
 
 case ":${PATH}:" in
     *":${install_dir}:"*) ;;

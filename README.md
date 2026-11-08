@@ -2,6 +2,8 @@
 
 IPv4/IPv6 subnet calculator: CIDR details, prefix cheatsheet, AWS VPC reserved addresses.
 
+Released under the [MIT License](LICENSE).
+
 ## Install
 
 ### curl (Linux and macOS)
@@ -11,15 +13,15 @@ curl -sL https://raw.githubusercontent.com/jonhadfield/subnets/main/install | sh
 ```
 
 Installs the latest release into `/usr/local/bin` after checking it against
-`checksums.txt`. Override the destination with `SUBNETS_INSTALL_DIR` on the
-`sh` end of the pipe (not on `curl`):
+`checksums.txt`. On macOS it also clears the Gatekeeper quarantine attribute.
+Override the destination with `SUBNETS_INSTALL_DIR` on the `sh` end of the
+pipe (not on `curl`):
 
 ```sh
 curl -sL https://raw.githubusercontent.com/jonhadfield/subnets/main/install | SUBNETS_INSTALL_DIR=~/.local/bin sh
 ```
 
-On macOS, Homebrew below is the better route: it upgrades cleanly and clears
-the quarantine attribute Gatekeeper sets on downloaded binaries.
+On macOS, Homebrew below is still the better route for upgrades.
 
 ### Homebrew
 
