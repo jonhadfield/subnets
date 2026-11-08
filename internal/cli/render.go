@@ -40,16 +40,7 @@ func writeHosts(w io.Writer, info subnet.Info, aws bool, limit int) {
 	var b strings.Builder
 	b.WriteString(banner(info.NetworkCIDR()))
 
-	total := info.Total
-	n := limit
-	truncated := true
-	if total.IsInt64() {
-		size := int(total.Int64())
-		if size <= limit {
-			n = size
-			truncated = false
-		}
-	}
+	n, truncated := hostLimit(info, limit)
 
 	var report subnet.AWSReport
 	if aws {
@@ -62,24 +53,7 @@ func writeHosts(w io.Writer, info subnet.Info, aws bool, limit int) {
 		if !ok {
 			break
 		}
-		role := "usable"
-		style := "ok"
-		if aws {
-			if r := subnet.AWSRole(report, addr); r != "" {
-				role = r
-				style = "bad"
-			}
-		} else if info.HasBroadcast && (addr == info.Network || addr == info.Last) {
-			if addr == info.Network {
-				role = "network"
-			} else {
-				role = "broadcast"
-			}
-			style = "warn"
-		} else if addr == info.Network && info.Version == 6 && info.HostBits > 1 {
-			role = "subnet-router anycast"
-			style = "warn"
-		}
+		role, style := hostRole(info, addr, aws, report)
 		mark := ""
 		if addr == info.Addr {
 			mark = "← you"
@@ -126,7 +100,7 @@ func writeHosts(w io.Writer, info subnet.Info, aws bool, limit int) {
 	b.WriteString(t.String())
 	if truncated {
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render(fmt.Sprintf("showing first %d of %s addresses (raise --limit for more)", n, subnet.FormatNumber(total))))
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("showing first %d of %s addresses (raise --limit for more)", n, subnet.FormatNumber(info.Total))))
 	}
 	b.WriteByte('\n')
 	lipgloss.Fprint(w, b.String())

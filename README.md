@@ -21,7 +21,13 @@ pipe (not on `curl`):
 curl -sL https://raw.githubusercontent.com/jonhadfield/subnets/main/install | SUBNETS_INSTALL_DIR=~/.local/bin sh
 ```
 
-On macOS, Homebrew below is still the better route for upgrades.
+On macOS, Homebrew below is still the better route for upgrades. Or install with
+the signed, stapled package:
+
+```sh
+curl -fLO https://github.com/jonhadfield/subnets/releases/latest/download/subnets_macos.pkg
+sudo installer -pkg subnets_macos.pkg -target /
+```
 
 ### Homebrew
 
@@ -49,6 +55,8 @@ subnets 192.168.0.0/28 --aws
 # Machine-readable JSON
 subnets 192.168.0.3/28 --json
 subnets 192.168.0.3/28 --json --aws
+subnets sheet --json
+subnets hosts 192.168.0.0/28 --json --aws --limit 32
 
 # Prefix / mask cheatsheet
 subnets sheet

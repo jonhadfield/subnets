@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"io"
+	"net/netip"
 
 	"github.com/jonhadfield/subnets/internal/subnet"
 )
@@ -58,6 +59,35 @@ type awsRangeJSON struct {
 	Hosts string `json:"hosts"`
 }
 
+type hostsJSON struct {
+	CIDR      string        `json:"cidr"`
+	Addresses string        `json:"addresses"`
+	Limit     int           `json:"limit"`
+	Truncated bool          `json:"truncated"`
+	Hosts     []hostRowJSON `json:"hosts"`
+}
+
+type hostRowJSON struct {
+	Index   int    `json:"index"`
+	Address string `json:"address"`
+	Role    string `json:"role"`
+	You     bool   `json:"you,omitempty"`
+}
+
+type sheetJSON struct {
+	Version int            `json:"version"`
+	Rows    []sheetRowJSON `json:"rows"`
+}
+
+type sheetRowJSON struct {
+	Prefix    int    `json:"prefix"`
+	Mask      string `json:"mask"`
+	Wildcard  string `json:"wildcard"`
+	Addresses string `json:"addresses"`
+	Usable    string `json:"usable"`
+	Note      string `json:"note,omitempty"`
+}
+
 func writeShowJSON(w io.Writer, info subnet.Info, aws bool) error {
 	out := showJSON{
 		Input:       info.Input,
@@ -93,9 +123,99 @@ func writeShowJSON(w io.Writer, info subnet.Info, aws bool) error {
 	if aws {
 		out.AWS = awsJSONFrom(info)
 	}
+	return encodeJSON(w, out)
+}
+
+func writeHostsJSON(w io.Writer, info subnet.Info, aws bool, limit int) error {
+	n, truncated := hostLimit(info, limit)
+	var report subnet.AWSReport
+	if aws {
+		report = subnet.AWS(info)
+	}
+	out := hostsJSON{
+		CIDR:      info.NetworkCIDR(),
+		Addresses: info.Total.String(),
+		Limit:     limit,
+		Truncated: truncated,
+		Hosts:     make([]hostRowJSON, 0, n),
+	}
+	for i := range n {
+		addr, ok := info.AddressAt(uint64(i))
+		if !ok {
+			break
+		}
+		role, _ := hostRole(info, addr, aws, report)
+		out.Hosts = append(out.Hosts, hostRowJSON{
+			Index:   i,
+			Address: addr.String(),
+			Role:    role,
+			You:     addr == info.Addr,
+		})
+	}
+	return encodeJSON(w, out)
+}
+
+func writeSheetJSON(w io.Writer, ipv6 bool) error {
+	rows := subnet.IPv4Sheet()
+	version := 4
+	if ipv6 {
+		rows = subnet.IPv6Sheet()
+		version = 6
+	}
+	out := sheetJSON{
+		Version: version,
+		Rows:    make([]sheetRowJSON, 0, len(rows)),
+	}
+	for _, r := range rows {
+		out.Rows = append(out.Rows, sheetRowJSON{
+			Prefix:    r.Prefix,
+			Mask:      r.Mask,
+			Wildcard:  r.Wildcard,
+			Addresses: r.Addresses,
+			Usable:    r.Usable,
+			Note:      r.Note,
+		})
+	}
+	return encodeJSON(w, out)
+}
+
+func encodeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	return enc.Encode(v)
+}
+
+func hostLimit(info subnet.Info, limit int) (n int, truncated bool) {
+	n = limit
+	truncated = true
+	if info.Total.IsInt64() {
+		size := int(info.Total.Int64())
+		if size <= limit {
+			return size, false
+		}
+	}
+	return n, truncated
+}
+
+func hostRole(info subnet.Info, addr netip.Addr, aws bool, report subnet.AWSReport) (role, style string) {
+	role = "usable"
+	style = "ok"
+	if aws {
+		if r := subnet.AWSRole(report, addr); r != "" {
+			return r, "bad"
+		}
+		return role, style
+	}
+	if info.HasBroadcast && (addr == info.Network || addr == info.Last) {
+		if addr == info.Network {
+			return "network", "warn"
+		}
+		return "broadcast", "warn"
+	}
+	if addr == info.Network && info.Version == 6 && info.HostBits > 1 {
+		return "subnet-router anycast", "warn"
+	}
+	return role, style
 }
 
 func awsJSONFrom(info subnet.Info) *awsJSON {

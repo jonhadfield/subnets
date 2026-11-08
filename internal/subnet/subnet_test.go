@@ -180,6 +180,19 @@ func TestIPv6(t *testing.T) {
 	}
 }
 
+func TestAWSIPv6PrefixStep(t *testing.T) {
+	for _, cidr := range []string{"2001:db8::/62", "2001:db8::/45"} {
+		info, err := Parse(cidr)
+		if err != nil {
+			t.Fatalf("%s: %v", cidr, err)
+		}
+		report := AWS(info)
+		if report.PrefixOK {
+			t.Fatalf("%s should fail AWS IPv6 step /4 check", cidr)
+		}
+	}
+}
+
 func TestIPv4Sheet(t *testing.T) {
 	rows := IPv4Sheet()
 	if len(rows) != 33 {

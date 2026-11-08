@@ -154,6 +154,63 @@ func TestHostsLimit(t *testing.T) {
 	}
 }
 
+func TestHostsJSON(t *testing.T) {
+	out, err := run(t, "hosts", "192.168.0.0/28", "--json", "--aws", "--limit", "5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got hostsJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.CIDR != "192.168.0.0/28" {
+		t.Fatalf("cidr: got %q", got.CIDR)
+	}
+	if !got.Truncated || len(got.Hosts) != 5 {
+		t.Fatalf("truncated=%v hosts=%d", got.Truncated, len(got.Hosts))
+	}
+	if got.Hosts[1].Role != "VPC router" {
+		t.Fatalf("index 1 role: got %q", got.Hosts[1].Role)
+	}
+	if got.Hosts[4].Role != "usable" {
+		t.Fatalf("index 4 role: got %q", got.Hosts[4].Role)
+	}
+}
+
+func TestSheetJSON(t *testing.T) {
+	out, err := run(t, "sheet", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got sheetJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.Version != 4 || len(got.Rows) != 33 {
+		t.Fatalf("version=%d rows=%d", got.Version, len(got.Rows))
+	}
+	if got.Rows[24].Mask != "255.255.255.0" || got.Rows[24].Note != "Class C" {
+		t.Fatalf("/24 row: %+v", got.Rows[24])
+	}
+}
+
+func TestShowJSONAWSIPv6BadStep(t *testing.T) {
+	out, err := run(t, "2001:db8::/62", "--json", "--aws")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got showJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.AWS == nil || got.AWS.PrefixOK {
+		t.Fatalf("expected prefix_ok false: %+v", got.AWS)
+	}
+	if !strings.Contains(got.AWS.Note, "step /4") {
+		t.Fatalf("note: got %q", got.AWS.Note)
+	}
+}
+
 func TestInvalid(t *testing.T) {
 	_, err := run(t, "not-an-ip")
 	if err == nil {
