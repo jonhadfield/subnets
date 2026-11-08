@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"regexp"
 	"strings"
 	"testing"
@@ -55,6 +56,35 @@ func TestShowAWS(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %q\n%s", want, out)
 		}
+	}
+}
+
+func TestShowJSON(t *testing.T) {
+	out, err := run(t, "192.168.0.3/28", "--json", "--aws")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got showJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.CIDR != "192.168.0.0/28" {
+		t.Fatalf("cidr: got %q", got.CIDR)
+	}
+	if got.Mask != "255.255.255.240" {
+		t.Fatalf("mask: got %q", got.Mask)
+	}
+	if got.Broadcast != "192.168.0.15" {
+		t.Fatalf("broadcast: got %q", got.Broadcast)
+	}
+	if got.HostIndex != "3" {
+		t.Fatalf("host_index: got %q", got.HostIndex)
+	}
+	if got.AWS == nil || got.AWS.UsableRange == nil {
+		t.Fatal("expected aws usable_range")
+	}
+	if got.AWS.UsableRange.First != "192.168.0.4" || got.AWS.UsableRange.Last != "192.168.0.14" {
+		t.Fatalf("aws usable_range: %+v", got.AWS.UsableRange)
 	}
 }
 

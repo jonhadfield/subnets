@@ -46,6 +46,10 @@ subnets 192.168.0.3/28
 # Same, with AWS VPC reservations
 subnets 192.168.0.0/28 --aws
 
+# Machine-readable JSON
+subnets 192.168.0.3/28 --json
+subnets 192.168.0.3/28 --json --aws
+
 # Prefix / mask cheatsheet
 subnets sheet
 subnets sheet --ipv6

@@ -16,6 +16,7 @@ var Version = "dev"
 type options struct {
 	aws   bool
 	ipv6  bool
+	json  bool
 	limit int
 }
 
@@ -34,6 +35,7 @@ func NewRoot() *cobra.Command {
 Examples:
   subnets 192.168.0.3/28
   subnets 192.168.0.0/28 --aws
+  subnets 192.168.0.3/28 --json
   subnets sheet
   subnets hosts 192.168.0.0/28 --aws`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -44,12 +46,16 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if opts.json {
+				return writeShowJSON(cmd.OutOrStdout(), info, opts.aws)
+			}
 			writeShow(cmd.OutOrStdout(), info, opts.aws)
 			return nil
 		},
 	}
 	root.CompletionOptions.HiddenDefaultCmd = true
 	root.Flags().BoolVar(&opts.aws, "aws", false, "show addresses reserved by AWS VPC")
+	root.Flags().BoolVar(&opts.json, "json", false, "emit machine-readable JSON")
 
 	root.AddCommand(newSheetCmd(opts), newHostsCmd(opts))
 	return root
