@@ -64,8 +64,35 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "$MACOS_INSTALLER_P12" ] || [ -z "$MACOS_NOTARY_KEY" ]; then
-            echo "::notice::MACOS_INSTALLER_P12 or MACOS_NOTARY_KEY not set - skipping the installer package."
+          missing=""
+          [ -n "$MACOS_INSTALLER_P12" ] || missing="${missing} MACOS_INSTALLER_P12"
+          [ -n "$MACOS_INSTALLER_PASSWORD" ] || missing="${missing} MACOS_INSTALLER_PASSWORD"
+          [ -n "$MACOS_NOTARY_KEY" ] || missing="${missing} MACOS_NOTARY_KEY"
+          [ -n "$MACOS_NOTARY_KEY_ID" ] || missing="${missing} MACOS_NOTARY_KEY_ID"
+          [ -n "$MACOS_NOTARY_ISSUER_ID" ] || missing="${missing} MACOS_NOTARY_ISSUER_ID"
+          if [ -n "$missing" ]; then
+            msg="Skipping macOS installer package; unset secrets:${missing}"
+            echo "::notice::$msg"
+            {
+              echo "## macOS installer package"
+              echo ""
+              echo "Skipped. Set these repository secrets (Developer ID **Installer** is a"
+              echo "different certificate from Developer ID Application), then re-run the"
+              echo "release or cut the next tag:"
+              echo ""
+              echo "| secret | purpose |"
+              echo "| --- | --- |"
+              echo "| \`MACOS_INSTALLER_P12\` | base64-encoded Developer ID Installer .p12 |"
+              echo "| \`MACOS_INSTALLER_PASSWORD\` | password for that .p12 |"
+              echo "| \`MACOS_NOTARY_*\` | same notary key used to notarize the binaries |"
+              echo ""
+              echo "Missing right now:\`${missing}\`"
+              echo ""
+              echo "Local helper (run in Terminal.app so Keychain can prompt Allow):"
+              echo "\`\`\`"
+              echo "./scripts/set-macos-installer-secrets.sh"
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
