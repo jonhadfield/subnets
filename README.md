@@ -167,6 +167,8 @@ subnets 10.0.0.0/24 --gcp
 subnets 2001:db8::/64
 subnets sheet
 subnets hosts 192.168.0.0/28 --aws
+subnets hosts 10.0.0.0/24 --azure
+subnets hosts 10.0.0.0/24 --gcp
 subnets contains 10.0.0.0/8 10.1.2.3
 subnets split 10.0.0.0/24 --prefix 26
 subnets supernet 10.0.0.0/25 10.0.0.128/25
@@ -211,6 +213,8 @@ common allocation sizes (`/32`, `/48`, `/56`, `/64`, …) through `/128`.
 ```sh
 subnets hosts 192.168.0.0/28
 subnets hosts 192.168.0.0/28 --aws
+subnets hosts 10.0.0.0/24 --azure
+subnets hosts 10.0.0.0/24 --gcp
 subnets hosts 10.0.0.0/24 --limit 32
 ```
 
@@ -316,8 +320,11 @@ Usable range: `+2` through last−2. Prefix check: IPv4 `/8`–`/29`.
 subnets 192.168.0.3/28 --json
 subnets 192.168.0.0/28 --json --aws
 subnets 10.0.0.0/24 --json --azure
+subnets 10.0.0.0/24 --json --gcp
 subnets sheet --json
 subnets hosts 192.168.0.0/28 --json --aws --limit 32
+subnets hosts 10.0.0.0/24 --json --azure --limit 32
+subnets hosts 10.0.0.0/24 --json --gcp --limit 32
 subnets contains 10.0.0.0/8 10.1.2.3 --json
 subnets split 10.0.0.0/24 --prefix 26 --json
 subnets supernet 10.0.0.0/25 10.0.0.128/25 --json

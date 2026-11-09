@@ -70,6 +70,8 @@ Examples:
   subnets 10.0.0.0/24 --gcp
   subnets sheet
   subnets hosts 192.168.0.0/28 --aws
+  subnets hosts 10.0.0.0/24 --azure
+  subnets hosts 10.0.0.0/24 --gcp
   subnets contains 10.0.0.0/8 10.1.2.3
   subnets split 10.0.0.0/24 --prefix 26
   subnets supernet 10.0.0.0/25 10.0.0.128/25`,
@@ -141,7 +143,12 @@ func newHostsCmd(opts *options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "hosts <cidr>",
 		Short: "List every address in a subnet",
-		Args:  cobra.RangeArgs(1, 2),
+		Example: `  subnets hosts 192.168.0.0/28
+  subnets hosts 192.168.0.0/28 --aws
+  subnets hosts 10.0.0.0/24 --azure
+  subnets hosts 10.0.0.0/24 --gcp
+  subnets hosts 10.0.0.0/24 --limit 32`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			info, err := parseInput(args)
 			if err != nil {
