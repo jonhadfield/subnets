@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -48,7 +49,7 @@ func TestShowAWS(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"AWS VPC reserved",
+		"AWS reserved",
 		"Reserved by AWS for the VPC router",
 		"Amazon DNS",
 		"192.168.0.4 – 192.168.0.14",
@@ -213,6 +214,120 @@ func TestShowJSONAWSIPv6BadStep(t *testing.T) {
 
 func TestInvalid(t *testing.T) {
 	_, err := run(t, "not-an-ip")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestShowAddrMask(t *testing.T) {
+	out, err := run(t, "192.168.0.3", "255.255.255.240")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "192.168.0.0/28") {
+		t.Fatalf("missing network\n%s", out)
+	}
+}
+
+func TestShowDottedMaskCIDR(t *testing.T) {
+	out, err := run(t, "10.0.0.5/255.255.255.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "10.0.0.0/24") {
+		t.Fatalf("missing /24\n%s", out)
+	}
+}
+
+func TestContains(t *testing.T) {
+	out, err := run(t, "contains", "10.0.0.0/8", "10.1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "yes") || !strings.Contains(out, "address") {
+		t.Fatalf("%s", out)
+	}
+}
+
+func TestContainsJSON(t *testing.T) {
+	out, err := run(t, "contains", "10.0.0.0/8", "192.168.0.0/16", "--json")
+	if !errors.Is(err, ErrNotContained) {
+		t.Fatalf("expected ErrNotContained, got %v", err)
+	}
+	var got containsJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Contains || got.Relation != "disjoint" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestContainsExitContained(t *testing.T) {
+	_, err := run(t, "contains", "10.0.0.0/8", "10.1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSplit(t *testing.T) {
+	out, err := run(t, "split", "10.0.0.0/24", "--prefix", "26")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"10.0.0.0/26", "10.0.0.64/26", "10.0.0.128/26", "10.0.0.192/26"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %s\n%s", want, out)
+		}
+	}
+}
+
+func TestSplitCountJSON(t *testing.T) {
+	out, err := run(t, "split", "10.0.0.0/24", "--count", "4", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got splitJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.CIDRs) != 4 || got.CIDRs[1] != "10.0.0.64/26" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestSupernet(t *testing.T) {
+	out, err := run(t, "supernet", "10.0.0.0/25", "10.0.0.128/25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "10.0.0.0/24") {
+		t.Fatalf("%s", out)
+	}
+}
+
+func TestShowAzure(t *testing.T) {
+	out, err := run(t, "10.0.0.0/24", "--azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Azure reserved") || !strings.Contains(out, "default gateway") {
+		t.Fatalf("%s", out)
+	}
+}
+
+func TestShowGCP(t *testing.T) {
+	out, err := run(t, "10.0.0.0/24", "--gcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "GCP reserved") || !strings.Contains(out, "future use") {
+		t.Fatalf("%s", out)
+	}
+}
+
+func TestCloudFlagsExclusive(t *testing.T) {
+	_, err := run(t, "10.0.0.0/24", "--aws", "--azure")
 	if err == nil {
 		t.Fatal("expected error")
 	}

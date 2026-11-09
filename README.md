@@ -1,7 +1,8 @@
 # subnets
 
-IPv4 and IPv6 subnet calculator for the terminal — CIDR details, a prefix
-cheatsheet, host listings, and the addresses Amazon reserves inside a VPC.
+IPv4 and IPv6 subnet calculator for the terminal — CIDR details, mask input,
+prefix cheatsheet, host listings, contains/split/supernet, and cloud reserved
+addresses for AWS, Azure, and GCP.
 
 [![ci](https://github.com/jonhadfield/subnets/actions/workflows/ci.yml/badge.svg)](https://github.com/jonhadfield/subnets/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/jonhadfield/subnets)](https://github.com/jonhadfield/subnets/releases/latest)
@@ -35,8 +36,8 @@ subnets  ·  192.168.0.3/28
 ```
 
 **Contents:** [install](#install) · [usage](#usage) · [show](#show) · [sheet](#sheet) ·
-[hosts](#hosts) · [aws](#aws) · [json](#json) · [development](#development) ·
-[license](#license)
+[hosts](#hosts) · [contains](#contains) · [split](#split) · [supernet](#supernet) ·
+[cloud](#cloud) · [json](#json) · [development](#development) · [license](#license)
 
 ## install
 
@@ -120,45 +121,63 @@ Each release also publishes `checksums.txt`. On Windows, unzip and put
 ## usage
 
 ```text
-subnets [cidr] [flags]
+subnets [addr|cidr] [mask] [flags]
 subnets sheet [flags]
 subnets hosts <cidr> [flags]
+subnets contains <outer> <inner> [flags]
+subnets split <cidr> (--prefix N | --count N) [flags]
+subnets supernet <cidr> [<cidr>...] [flags]
 ```
 
-Pass an address or a CIDR. A bare IPv4 address is treated as `/32`; a bare IPv6
-address as `/128`.
+Pass an address, a CIDR, or an address with a dotted mask
+(`192.168.0.3/255.255.255.240` or as two arguments). A bare IPv4 address is
+`/32`; a bare IPv6 address is `/128`. Bare values are never treated as masks
+alone (`128.0.0.0` is a host, not `/1`).
 
 | command | what it does |
 | --- | --- |
-| `subnets <addr\|cidr>` | subnet details for one address or prefix |
+| `subnets <addr\|cidr> [mask]` | subnet details for one address or prefix |
 | `subnets sheet` | prefix length / subnet mask cheatsheet |
 | `subnets hosts <cidr>` | list every address in a subnet |
+| `subnets contains <outer> <inner>` | whether a prefix contains an address or prefix |
+| `subnets split <cidr>` | split into equal subnets (`--prefix` or `--count`) |
+| `subnets supernet <cidr…>` | aggregate prefixes into supernets where possible |
 
 | flag | where | meaning |
 | --- | --- | --- |
 | `--aws` | show, hosts | mark addresses reserved by AWS VPC |
-| `--json` | show, sheet, hosts | emit machine-readable JSON |
+| `--azure` | show, hosts | mark addresses reserved by Azure VNet |
+| `--gcp` | show, hosts | mark addresses reserved by Google Cloud VPC |
+| `--json` | all commands | emit machine-readable JSON |
 | `--ipv6` | sheet | show the IPv6 prefix cheatsheet |
 | `--limit N` | hosts | maximum addresses to print (default `256`) |
+| `--prefix N` | split | new prefix length for each subnet |
+| `--count N` | split | number of equal subnets (power of two) |
 | `-v`, `--version` | root | print the build version |
 | `-h`, `--help` | any | help for that command |
 
+`--aws`, `--azure`, and `--gcp` are mutually exclusive.
+
 ```sh
 subnets 192.168.0.3/28
+subnets 192.168.0.3 255.255.255.240
 subnets 192.168.0.0/28 --aws
+subnets 10.0.0.0/24 --azure
+subnets 10.0.0.0/24 --gcp
 subnets 2001:db8::/64
 subnets sheet
-subnets sheet --ipv6
 subnets hosts 192.168.0.0/28 --aws
-subnets hosts 10.0.0.0/24 --limit 32
-subnets 192.168.0.3/28 --json
+subnets contains 10.0.0.0/8 10.1.2.3
+subnets split 10.0.0.0/24 --prefix 26
+subnets supernet 10.0.0.0/25 10.0.0.128/25
 ```
 
 ## show
 
 ```sh
 subnets 192.168.0.3/28
-subnets 10.0.0.5
+subnets 192.168.0.3 255.255.255.240
+subnets 10.0.0.5/255.255.255.0
 subnets 2001:db8::/64
 ```
 
@@ -172,7 +191,8 @@ Prints three panels by default:
   counts, and the zero-based index of the input address inside the subnet
 - **Binary** — dotted/colonic binary of the address and mask (IPv4)
 
-Add `--aws` for a fourth panel of VPC reservations; see [aws](#aws).
+Add `--aws`, `--azure`, or `--gcp` for a fourth panel of cloud reservations; see
+[cloud](#cloud).
 
 ## sheet
 
@@ -197,47 +217,110 @@ subnets hosts 10.0.0.0/24 --limit 32
 Lists every address in the subnet as a table: index, address, role, and a
 `← you` mark when the input address is in range.
 
-Without `--aws`, roles are the classic network/broadcast (IPv4) or
-subnet-router anycast (IPv6), otherwise `usable`. With `--aws`, roles follow the
-VPC reservation table below.
+Without a cloud flag, roles are the classic network/broadcast (IPv4) or
+subnet-router anycast (IPv6), otherwise `usable`. With `--aws` / `--azure` /
+`--gcp`, roles follow that provider’s reservation table.
 
 `--limit` caps how many rows are printed (default `256`). Larger subnets are
 truncated rather than dumping millions of lines; the JSON form reports
 `"truncated": true` when that happens.
 
-## aws
+## contains
+
+```sh
+subnets contains 10.0.0.0/8 10.1.2.3
+subnets contains 10.0.0.0/8 10.1.2.0/24
+subnets contains 10.0.0.0/8 192.168.0.0/16 --json
+```
+
+Reports whether the outer prefix fully contains the inner address or prefix.
+Relation is one of `equal`, `subnet`, `address`, `supernet`, `overlap`, or
+`disjoint`. Exit status is `0` when contained (or equal), `1` when not — the
+result is still printed (and `--json` still emits the object).
+
+## split
+
+```sh
+subnets split 10.0.0.0/24 --prefix 26
+subnets split 10.0.0.0/24 --count 4
+```
+
+Divides a network into equal child subnets. `--prefix` sets the new length;
+`--count` asks for N equal pieces (N must be a power of two). Use one or the
+other, not both.
+
+## supernet
+
+```sh
+subnets supernet 10.0.0.0/25 10.0.0.128/25
+subnets supernet 10.0.0.0/26 10.0.0.64/26 10.0.0.128/25 --json
+```
+
+Aggregates the given prefixes into the smallest covering set, combining exact
+sibling pairs into a parent when both halves are present. Leftovers that cannot
+pair stay as they are.
+
+## cloud
 
 ```sh
 subnets 192.168.0.0/28 --aws
-subnets hosts 192.168.0.0/28 --aws
+subnets 10.0.0.0/24 --azure
+subnets 10.0.0.0/24 --gcp
+subnets hosts 10.0.0.0/24 --gcp
 ```
 
-Amazon keeps five addresses in every VPC subnet. `--aws` surfaces them on show
-output and tags them on `hosts`:
+### AWS
+
+Amazon keeps five addresses in every VPC subnet:
 
 | offset | role | detail |
 | --- | --- | --- |
-| `.0` / first | Network | network address |
-| `.1` / +1 | VPC router | reserved for the VPC router |
-| `.2` / +2 | Amazon DNS | reserved for Amazon DNS (IPv4); reserved on IPv6 |
-| `.3` / +3 | Future use | reserved for future use (IPv4); reserved on IPv6 |
-| last | Broadcast / Last address | broadcast on IPv4 (still reserved in a VPC); last address on IPv6 |
+| first | Network | network address |
+| +1 | VPC router | reserved for the VPC router |
+| +2 | Amazon DNS / Reserved | Amazon DNS on IPv4; reserved on IPv6 |
+| +3 | Future use / Reserved | future use on IPv4; reserved on IPv6 |
+| last | Broadcast / Last address | broadcast on IPv4; last address on IPv6 |
 
-The usable range starts at offset `+4` and runs through the address before the
-last; the show panel reports it along with whether the input itself is reserved.
+Usable range: `+4` through last−1. Prefix check: IPv4 `/16`–`/28`; IPv6
+`/44`–`/64` in steps of `/4`.
 
-Prefix constraints are checked too: VPC IPv4 subnets must be `/16`–`/28`; VPC
-IPv6 subnets `/44`–`/64` in steps of `/4`. Out-of-range prefixes are flagged
-rather than silently inventing a usable range.
+### Azure
+
+Azure also reserves five addresses (first four and last):
+
+| offset | role |
+| --- | --- |
+| first | Network |
+| +1 | Default gateway |
+| +2, +3 | Azure DNS mapping |
+| last | Broadcast |
+
+Usable range: `+4` through last−1. Prefix check: IPv4 `/2`–`/29`; IPv6 `/64`.
+
+### GCP
+
+Google Cloud reserves the first two and last two of the primary IPv4 range:
+
+| offset | role |
+| --- | --- |
+| first | Network |
+| +1 | Gateway |
+| last−1 | Google reserved |
+| last | Broadcast |
+
+Usable range: `+2` through last−2. Prefix check: IPv4 `/8`–`/29`.
 
 ## json
 
 ```sh
 subnets 192.168.0.3/28 --json
 subnets 192.168.0.0/28 --json --aws
+subnets 10.0.0.0/24 --json --azure
 subnets sheet --json
-subnets sheet --ipv6 --json
 subnets hosts 192.168.0.0/28 --json --aws --limit 32
+subnets contains 10.0.0.0/8 10.1.2.3 --json
+subnets split 10.0.0.0/24 --prefix 26 --json
+subnets supernet 10.0.0.0/25 10.0.0.128/25 --json
 ```
 
 `--json` replaces the coloured tables with indented JSON on stdout — suitable
@@ -246,11 +329,13 @@ counts) are emitted as strings.
 
 Show output includes `input`, `address`, `version`, `type`, `cidr`, `prefix`,
 `mask`, `wildcard`, `network`, `broadcast` / `last_address`, host range, counts,
-`host_index`, and (for IPv4) `mask_hex` plus a `binary` object. With `--aws`, an
-`aws` object adds `reserved`, `usable_range`, `prefix_ok`, and `input_role`.
+`host_index`, and (for IPv4) `mask_hex` plus a `binary` object. With a cloud
+flag, a `cloud` object adds `provider`, `reserved`, `usable_range`, `prefix_ok`,
+and `input_role` (and `aws` is also set when `--aws` is used).
 
 Sheet output is `{ "version": 4|6, "rows": [ … ] }`. Hosts output is
-`{ "cidr", "addresses", "limit", "truncated", "hosts": [ … ] }`.
+`{ "cidr", "addresses", "limit", "truncated", "hosts": [ … ] }`. Contains,
+split, and supernet emit `contains` / `cidrs` objects as shown by `--json`.
 
 ## development
 

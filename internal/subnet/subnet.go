@@ -35,8 +35,10 @@ type Kind struct {
 
 var ErrInvalid = errors.New("invalid address or CIDR")
 
-// Parse accepts an address ("192.168.0.3") or CIDR ("192.168.0.3/28").
-// A bare IPv4 address is treated as /32; a bare IPv6 address as /128.
+// Parse accepts an address ("192.168.0.3"), CIDR ("192.168.0.3/28"), or
+// address/mask ("192.168.0.3/255.255.255.240"). A bare IPv4 address is /32; a
+// bare IPv6 address is /128. Bare values are never treated as masks alone —
+// 128.0.0.0 is a host, not /1; use ParseMaskPrefix, addr/mask, or addr + mask.
 func Parse(s string) (Info, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -44,6 +46,9 @@ func Parse(s string) (Info, error) {
 	}
 	if prefix, err := netip.ParsePrefix(s); err == nil {
 		return fromPrefix(prefix, s), nil
+	}
+	if info, ok, err := parseAddrSlashMask(s); ok {
+		return info, err
 	}
 	addr, err := netip.ParseAddr(s)
 	if err != nil {

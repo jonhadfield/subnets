@@ -29,7 +29,8 @@ type showJSON struct {
 	UsableHosts string      `json:"usable_hosts"`
 	HostIndex   string      `json:"host_index,omitempty"`
 	Binary      *binaryJSON `json:"binary,omitempty"`
-	AWS         *awsJSON    `json:"aws,omitempty"`
+	Cloud       *cloudJSON  `json:"cloud,omitempty"`
+	AWS         *cloudJSON  `json:"aws,omitempty"`
 }
 
 type binaryJSON struct {
@@ -37,27 +38,34 @@ type binaryJSON struct {
 	Mask    string `json:"mask"`
 }
 
-type awsJSON struct {
-	Reserved    []awsReservedJSON `json:"reserved"`
-	UsableRange *awsRangeJSON     `json:"usable_range,omitempty"`
-	TooSmall    bool              `json:"too_small,omitempty"`
-	PrefixOK    bool              `json:"prefix_ok"`
-	MinPrefix   int               `json:"min_prefix"`
-	InputRole   string            `json:"input_role,omitempty"`
-	Note        string            `json:"note,omitempty"`
+type cloudJSON struct {
+	Provider    string             `json:"provider"`
+	Reserved    []cloudReservedJSON `json:"reserved"`
+	UsableRange *cloudRangeJSON    `json:"usable_range,omitempty"`
+	TooSmall    bool               `json:"too_small,omitempty"`
+	PrefixOK    bool               `json:"prefix_ok"`
+	MinPrefix   int                `json:"min_prefix"`
+	InputRole   string             `json:"input_role,omitempty"`
+	Note        string             `json:"note,omitempty"`
 }
 
-type awsReservedJSON struct {
+// awsJSON kept as alias shape for tests that decode into showJSON.AWS.
+type awsJSON = cloudJSON
+
+type cloudReservedJSON struct {
 	Address string `json:"address"`
 	Role    string `json:"role"`
 	Detail  string `json:"detail"`
 }
 
-type awsRangeJSON struct {
+type cloudRangeJSON struct {
 	First string `json:"first"`
 	Last  string `json:"last"`
 	Hosts string `json:"hosts"`
 }
+
+type awsReservedJSON = cloudReservedJSON
+type awsRangeJSON = cloudRangeJSON
 
 type hostsJSON struct {
 	CIDR      string        `json:"cidr"`
@@ -88,7 +96,24 @@ type sheetRowJSON struct {
 	Note      string `json:"note,omitempty"`
 }
 
-func writeShowJSON(w io.Writer, info subnet.Info, aws bool) error {
+type containsJSON struct {
+	Outer    string `json:"outer"`
+	Inner    string `json:"inner"`
+	Contains bool   `json:"contains"`
+	Relation string `json:"relation"`
+}
+
+type splitJSON struct {
+	Input string   `json:"input"`
+	CIDRs []string `json:"cidrs"`
+}
+
+type supernetJSON struct {
+	Input []string `json:"input"`
+	CIDRs []string `json:"cidrs"`
+}
+
+func writeShowJSON(w io.Writer, info subnet.Info, cloud subnet.Cloud, useCloud bool) error {
 	out := showJSON{
 		Input:       info.Input,
 		Address:     info.Addr.String(),
@@ -120,17 +145,21 @@ func writeShowJSON(w io.Writer, info subnet.Info, aws bool) error {
 	if info.Prefix.Bits() < info.Addr.BitLen() {
 		out.HostIndex = info.HostIndex().String()
 	}
-	if aws {
-		out.AWS = awsJSONFrom(info)
+	if useCloud {
+		cj := cloudJSONFrom(info, cloud)
+		out.Cloud = cj
+		if cloud == subnet.CloudAWS {
+			out.AWS = cj
+		}
 	}
 	return encodeJSON(w, out)
 }
 
-func writeHostsJSON(w io.Writer, info subnet.Info, aws bool, limit int) error {
+func writeHostsJSON(w io.Writer, info subnet.Info, cloud subnet.Cloud, useCloud bool, limit int) error {
 	n, truncated := hostLimit(info, limit)
-	var report subnet.AWSReport
-	if aws {
-		report = subnet.AWS(info)
+	var report subnet.CloudReport
+	if useCloud {
+		report = subnet.CloudFor(info, cloud)
 	}
 	out := hostsJSON{
 		CIDR:      info.NetworkCIDR(),
@@ -144,7 +173,7 @@ func writeHostsJSON(w io.Writer, info subnet.Info, aws bool, limit int) error {
 		if !ok {
 			break
 		}
-		role, _ := hostRole(info, addr, aws, report)
+		role, _ := hostRole(info, addr, useCloud, report)
 		out.Hosts = append(out.Hosts, hostRowJSON{
 			Index:   i,
 			Address: addr.String(),
@@ -179,6 +208,31 @@ func writeSheetJSON(w io.Writer, ipv6 bool) error {
 	return encodeJSON(w, out)
 }
 
+func writeContainsJSON(w io.Writer, result subnet.ContainsResult) error {
+	return encodeJSON(w, containsJSON{
+		Outer:    result.Outer,
+		Inner:    result.Inner,
+		Contains: result.Contains,
+		Relation: result.Relation,
+	})
+}
+
+func writeSplitJSON(w io.Writer, input string, parts []subnet.Info) error {
+	out := splitJSON{Input: input, CIDRs: make([]string, 0, len(parts))}
+	for _, p := range parts {
+		out.CIDRs = append(out.CIDRs, p.NetworkCIDR())
+	}
+	return encodeJSON(w, out)
+}
+
+func writeSupernetJSON(w io.Writer, inputs []string, parts []subnet.Info) error {
+	out := supernetJSON{Input: inputs, CIDRs: make([]string, 0, len(parts))}
+	for _, p := range parts {
+		out.CIDRs = append(out.CIDRs, p.NetworkCIDR())
+	}
+	return encodeJSON(w, out)
+}
+
 func encodeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -197,11 +251,11 @@ func hostLimit(info subnet.Info, limit int) (n int, truncated bool) {
 	return n, truncated
 }
 
-func hostRole(info subnet.Info, addr netip.Addr, aws bool, report subnet.AWSReport) (role, style string) {
+func hostRole(info subnet.Info, addr netip.Addr, useCloud bool, report subnet.CloudReport) (role, style string) {
 	role = "usable"
 	style = "ok"
-	if aws {
-		if r := subnet.AWSRole(report, addr); r != "" {
+	if useCloud {
+		if r := subnet.CloudRole(report, addr); r != "" {
 			return r, "bad"
 		}
 		return role, style
@@ -218,34 +272,29 @@ func hostRole(info subnet.Info, addr netip.Addr, aws bool, report subnet.AWSRepo
 	return role, style
 }
 
-func awsJSONFrom(info subnet.Info) *awsJSON {
-	report := subnet.AWS(info)
-	out := &awsJSON{
-		Reserved:  make([]awsReservedJSON, 0, len(report.Reserved)),
+func cloudJSONFrom(info subnet.Info, cloud subnet.Cloud) *cloudJSON {
+	report := subnet.CloudFor(info, cloud)
+	out := &cloudJSON{
+		Provider:  string(cloud),
+		Reserved:  make([]cloudReservedJSON, 0, len(report.Reserved)),
 		TooSmall:  report.TooSmall,
 		PrefixOK:  report.PrefixOK,
 		MinPrefix: report.MinPrefix,
 		InputRole: report.InputRole,
+		Note:      report.Note,
 	}
 	for _, r := range report.Reserved {
-		out.Reserved = append(out.Reserved, awsReservedJSON{
+		out.Reserved = append(out.Reserved, cloudReservedJSON{
 			Address: r.Addr.String(),
 			Role:    r.Role,
 			Detail:  r.Detail,
 		})
 	}
 	if report.HasUsable {
-		out.UsableRange = &awsRangeJSON{
+		out.UsableRange = &cloudRangeJSON{
 			First: report.FirstUsable.String(),
 			Last:  report.LastUsable.String(),
 			Hosts: report.Usable.String(),
-		}
-	}
-	if !report.PrefixOK {
-		if info.Version == 4 {
-			out.Note = "VPC IPv4 subnets must be between /16 and /28"
-		} else {
-			out.Note = "VPC IPv6 subnets must be between /44 and /64 (step /4)"
 		}
 	}
 	return out

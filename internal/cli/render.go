@@ -10,14 +10,14 @@ import (
 	"github.com/jonhadfield/subnets/internal/subnet"
 )
 
-func writeShow(w io.Writer, info subnet.Info, aws bool) {
+func writeShow(w io.Writer, info subnet.Info, cloud subnet.Cloud, useCloud bool) {
 	var b strings.Builder
 	b.WriteString(banner(info.Input))
 	b.WriteString(addressBox(info))
 	b.WriteString(subnetBox(info))
 	b.WriteString(binaryBox(info))
-	if aws {
-		b.WriteString(awsBox(info))
+	if useCloud {
+		b.WriteString(cloudBox(info, cloud))
 	}
 	b.WriteByte('\n')
 	lipgloss.Fprint(w, b.String())
@@ -36,15 +36,15 @@ func writeSheet(w io.Writer, ipv6 bool) {
 	lipgloss.Fprint(w, b.String())
 }
 
-func writeHosts(w io.Writer, info subnet.Info, aws bool, limit int) {
+func writeHosts(w io.Writer, info subnet.Info, cloud subnet.Cloud, useCloud bool, limit int) {
 	var b strings.Builder
 	b.WriteString(banner(info.NetworkCIDR()))
 
 	n, truncated := hostLimit(info, limit)
 
-	var report subnet.AWSReport
-	if aws {
-		report = subnet.AWS(info)
+	var report subnet.CloudReport
+	if useCloud {
+		report = subnet.CloudFor(info, cloud)
 	}
 
 	rows := make([][]string, 0, n)
@@ -53,7 +53,7 @@ func writeHosts(w io.Writer, info subnet.Info, aws bool, limit int) {
 		if !ok {
 			break
 		}
-		role, style := hostRole(info, addr, aws, report)
+		role, style := hostRole(info, addr, useCloud, report)
 		mark := ""
 		if addr == info.Addr {
 			mark = "← you"
@@ -164,8 +164,9 @@ func binaryBox(info subnet.Info) string {
 	return box("Binary", rows)
 }
 
-func awsBox(info subnet.Info) string {
-	report := subnet.AWS(info)
+func cloudBox(info subnet.Info, cloud subnet.Cloud) string {
+	report := subnet.CloudFor(info, cloud)
+	title := cloud.Title() + " reserved"
 	rows := make([][2]string, 0, len(report.Reserved)+4)
 	for _, r := range report.Reserved {
 		label := r.Addr.String()
@@ -180,19 +181,73 @@ func awsBox(info subnet.Info) string {
 			fmt.Sprintf("%s – %s  (%s hosts)", report.FirstUsable, report.LastUsable, subnet.FormatNumber(report.Usable)),
 		})
 	} else {
-		rows = append(rows, [2]string{"Usable range", "none (subnet too small for AWS)"})
+		rows = append(rows, [2]string{"Usable range", "none (subnet too small for " + cloud.Title() + ")"})
 	}
-	if !report.PrefixOK {
-		if info.Version == 4 {
-			rows = append(rows, [2]string{"AWS note", "VPC IPv4 subnets must be between /16 and /28"})
-		} else {
-			rows = append(rows, [2]string{"AWS note", "VPC IPv6 subnets must be between /44 and /64 (step /4)"})
-		}
+	if !report.PrefixOK && report.Note != "" {
+		rows = append(rows, [2]string{cloud.Title() + " note", report.Note})
 	}
 	if report.InputRole != "" {
-		rows = append(rows, [2]string{"This address", "reserved by AWS (" + report.InputRole + ")"})
+		rows = append(rows, [2]string{"This address", "reserved by " + cloud.Title() + " (" + report.InputRole + ")"})
 	}
-	return box("AWS VPC reserved", rows)
+	return box(title, rows)
+}
+
+func writeContains(w io.Writer, result subnet.ContainsResult) {
+	var b strings.Builder
+	b.WriteString(banner(result.Outer + " ∋ " + result.Inner))
+	status := "no"
+	if result.Contains {
+		status = "yes"
+	}
+	rows := [][2]string{
+		{"Outer", result.Outer},
+		{"Inner", result.Inner},
+		{"Contains", status},
+		{"Relation", result.Relation},
+	}
+	b.WriteString(box("Contains", rows))
+	b.WriteByte('\n')
+	lipgloss.Fprint(w, b.String())
+}
+
+func writeSplit(w io.Writer, input string, parts []subnet.Info) {
+	var b strings.Builder
+	b.WriteString(banner(input))
+	rows := make([][]string, 0, len(parts))
+	for i, p := range parts {
+		rows = append(rows, []string{fmt.Sprintf("%d", i), p.NetworkCIDR(), subnet.FormatNumber(p.Total)})
+	}
+	t := table.New().
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(colBorder)).
+		Headers("INDEX", "CIDR", "ADDRESSES").
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return headerStyle
+			}
+			if row%2 == 0 {
+				return cellStyle
+			}
+			return oddCellStyle
+		})
+	for _, r := range rows {
+		t.Row(r[0], r[1], r[2])
+	}
+	b.WriteString(t.String())
+	b.WriteByte('\n')
+	lipgloss.Fprint(w, b.String())
+}
+
+func writeSupernet(w io.Writer, inputs []string, parts []subnet.Info) {
+	var b strings.Builder
+	b.WriteString(banner(strings.Join(inputs, " + ")))
+	rows := make([][2]string, 0, len(parts))
+	for i, p := range parts {
+		rows = append(rows, [2]string{fmt.Sprintf("%d", i), p.NetworkCIDR()})
+	}
+	b.WriteString(box("Supernet", rows))
+	b.WriteByte('\n')
+	lipgloss.Fprint(w, b.String())
 }
 
 func box(title string, rows [][2]string) string {
