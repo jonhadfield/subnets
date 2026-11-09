@@ -16,24 +16,35 @@ permissions:
   contents: write
 
 jobs:
+  # Always runs so the installer job's `needs` is satisfied on workflow_dispatch
+  # without skipping the whole graph. Tag pushes do the real release; dispatch
+  # is a no-op here and only rebuilds the .pkg from existing darwin archives.
   goreleaser:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
+      - name: Installer-only run
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "Skipping goreleaser; attaching subnets_macos.pkg to ${{ github.event.inputs.tag }}."
+
       - uses: actions/checkout@v7
+        if: github.event_name == 'push'
         with:
           fetch-depth: 0
 
       - uses: actions/setup-go@v7
+        if: github.event_name == 'push'
         with:
           go-version-file: go.mod
 
       # Install via Go module proxy rather than GitHub release assets, which
       # have been returning intermittent 504s for goreleaser/goreleaser.
       - name: Install GoReleaser
+        if: github.event_name == 'push'
         run: go install github.com/goreleaser/goreleaser/v2@v2.18.0
 
       - name: Release
+        if: github.event_name == 'push'
         run: goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,15 +66,12 @@ jobs:
   # repositories. Skips itself when the installer certificate is absent, so the
   # rest of the release is unaffected until the secrets are set.
   #
-  # On tag push it waits for goreleaser. On workflow_dispatch it runs alone
-  # against an existing release's darwin archives:
+  # On tag push it waits for goreleaser. On workflow_dispatch it rebuilds the
+  # package from an existing release's darwin archives (no asset wipe needed):
   #   gh workflow run release.yml -f tag=v0.1.3
   installer:
     name: macOS installer package
     needs: [goreleaser]
-    if: >-
-      always() &&
-      (github.event_name == 'workflow_dispatch' || needs.goreleaser.result == 'success')
     runs-on: macos-latest
     permissions:
       contents: write
