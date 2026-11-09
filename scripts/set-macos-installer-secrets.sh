@@ -96,7 +96,7 @@ try (cfData as Data).write(to: URL(fileURLWithPath: outPath), options: .atomic)
 fputs("wrote \(outPath) (\((cfData as Data).count) bytes)\n", stderr)
 SWIFT
 
-echo "Exporting '$summary_match' via SecItemExport…"
+echo "Exporting '$summary_match' via SecItemExport..."
 echo "If macOS asks, choose Allow (or Always Allow)."
 swift "$work/export.swift" "$work/installer.p12" "$pass" "$summary_match"
 
@@ -118,9 +118,9 @@ security delete-keychain "$tmpkc" >/dev/null 2>&1 || true
 
 base64 <"$work/installer.p12" | tr -d '\n' >"$work/installer.b64"
 
-echo "Setting secrets on $repo…"
+echo "Setting secrets on ${repo}..."
 gh secret set MACOS_INSTALLER_P12 --repo "$repo" <"$work/installer.b64"
 gh secret set MACOS_INSTALLER_PASSWORD --repo "$repo" <"$work/pass"
 
 echo "Done. Next release tag will build, notarize, staple, and upload subnets_macos.pkg."
-echo "Confirm with: gh secret list --repo $repo | grep MACOS_INSTALLER"
+echo "Confirm with: gh secret list --repo ${repo} | grep MACOS_INSTALLER"
