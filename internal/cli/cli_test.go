@@ -81,6 +81,9 @@ func TestShowJSON(t *testing.T) {
 	if got.HostIndex != "3" {
 		t.Fatalf("host_index: got %q", got.HostIndex)
 	}
+	if got.Cloud == nil || got.Cloud.Provider != "aws" || got.Cloud.UsableRange == nil {
+		t.Fatalf("expected cloud aws usable_range: %+v", got.Cloud)
+	}
 	if got.AWS == nil || got.AWS.UsableRange == nil {
 		t.Fatal("expected aws usable_range")
 	}
@@ -136,6 +139,30 @@ func TestHostsAWS(t *testing.T) {
 	}
 	if !strings.Contains(out, "VPC router") {
 		t.Fatalf("hosts missing AWS roles\n%s", out)
+	}
+}
+
+func TestHostsAzure(t *testing.T) {
+	out, err := run(t, "hosts", "10.0.0.0/24", "--azure", "--limit", "5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Default gateway", "Azure DNS", "usable"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("hosts missing Azure role %q\n%s", want, out)
+		}
+	}
+}
+
+func TestHostsGCP(t *testing.T) {
+	out, err := run(t, "hosts", "10.0.0.0/24", "--gcp", "--limit", "4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Gateway", "usable"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("hosts missing GCP role %q\n%s", want, out)
+		}
 	}
 }
 
@@ -311,8 +338,15 @@ func TestShowAzure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Azure reserved") || !strings.Contains(out, "default gateway") {
-		t.Fatalf("%s", out)
+	for _, want := range []string{
+		"Azure reserved",
+		"Reserved by Azure for the default gateway",
+		"Azure DNS",
+		"10.0.0.4 – 10.0.0.254",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q\n%s", want, out)
+		}
 	}
 }
 
@@ -321,14 +355,65 @@ func TestShowGCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "GCP reserved") || !strings.Contains(out, "future use") {
-		t.Fatalf("%s", out)
+	for _, want := range []string{
+		"GCP reserved",
+		"Reserved by Google Cloud for future use",
+		"10.0.0.2 – 10.0.0.253",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestShowJSONAzure(t *testing.T) {
+	out, err := run(t, "10.0.0.0/24", "--json", "--azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got showJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.AWS != nil {
+		t.Fatal("aws field should be unset for --azure")
+	}
+	if got.Cloud == nil || got.Cloud.Provider != "azure" || got.Cloud.UsableRange == nil {
+		t.Fatalf("cloud: %+v", got.Cloud)
+	}
+	if got.Cloud.UsableRange.First != "10.0.0.4" || got.Cloud.UsableRange.Last != "10.0.0.254" {
+		t.Fatalf("usable_range: %+v", got.Cloud.UsableRange)
+	}
+}
+
+func TestShowJSONGCP(t *testing.T) {
+	out, err := run(t, "10.0.0.0/24", "--json", "--gcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got showJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.AWS != nil {
+		t.Fatal("aws field should be unset for --gcp")
+	}
+	if got.Cloud == nil || got.Cloud.Provider != "gcp" || got.Cloud.UsableRange == nil {
+		t.Fatalf("cloud: %+v", got.Cloud)
+	}
+	if got.Cloud.UsableRange.First != "10.0.0.2" || got.Cloud.UsableRange.Last != "10.0.0.253" {
+		t.Fatalf("usable_range: %+v", got.Cloud.UsableRange)
 	}
 }
 
 func TestCloudFlagsExclusive(t *testing.T) {
-	_, err := run(t, "10.0.0.0/24", "--aws", "--azure")
-	if err == nil {
-		t.Fatal("expected error")
+	for _, args := range [][]string{
+		{"10.0.0.0/24", "--aws", "--azure"},
+		{"10.0.0.0/24", "--aws", "--gcp"},
+		{"10.0.0.0/24", "--azure", "--gcp"},
+	} {
+		if _, err := run(t, args...); err == nil {
+			t.Fatalf("expected exclusive error for %v", args)
+		}
 	}
 }
