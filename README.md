@@ -312,7 +312,7 @@ Google Cloud reserves the first two and last two of the primary IPv4 range:
 | last−1 | Google reserved |
 | last | Broadcast |
 
-Usable range: `+2` through last−2. Prefix check: IPv4 `/8`–`/29`.
+Usable range: `+2` through last−2. Prefix check: IPv4 `/8`–`/29`; IPv6 `/64`.
 
 ## json
 

@@ -82,6 +82,40 @@ func TestContainsDisjoint(t *testing.T) {
 	}
 }
 
+func TestContainsEqualUnmasked(t *testing.T) {
+	got, err := Contains("10.0.0.0/24", "10.0.0.128/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Contains || got.Relation != "equal" {
+		t.Fatalf("%+v", got)
+	}
+	if got.Outer != "10.0.0.0/24" || got.Inner != "10.0.0.0/24" {
+		t.Fatalf("cidrs: %+v", got)
+	}
+}
+
+func TestContainsSupernet(t *testing.T) {
+	got, err := Contains("10.0.0.0/25", "10.0.0.0/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Contains || got.Relation != "supernet" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestContainsNestedNotOverlap(t *testing.T) {
+	// Aligned CIDRs that share addresses are containment, not "overlap".
+	got, err := Contains("10.0.0.0/24", "10.0.0.128/25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Contains || got.Relation != "subnet" {
+		t.Fatalf("%+v", got)
+	}
+}
+
 func TestSplit(t *testing.T) {
 	parts, err := Split("10.0.0.0/24", 26)
 	if err != nil {
@@ -159,5 +193,49 @@ func TestGCPReserved(t *testing.T) {
 	}
 	if !r.HasUsable || r.FirstUsable.String() != "10.0.0.2" || r.LastUsable.String() != "10.0.0.253" {
 		t.Fatalf("usable %s-%s", r.FirstUsable, r.LastUsable)
+	}
+}
+
+func TestAzureIPv6Prefix(t *testing.T) {
+	ok, err := Parse("2001:db8::/64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !Azure(ok).PrefixOK {
+		t.Fatal("expected /64 to be a valid Azure IPv6 prefix")
+	}
+	bad, err := Parse("2001:db8::/56")
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := Azure(bad)
+	if report.PrefixOK {
+		t.Fatal("/56 should fail Azure IPv6 /64 check")
+	}
+	if report.Note == "" {
+		t.Fatal("expected Azure IPv6 note")
+	}
+}
+
+func TestGCPIPv6Prefix(t *testing.T) {
+	ok, err := Parse("2001:db8::/64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !GCP(ok).PrefixOK {
+		t.Fatal("expected /64 to be a valid GCP IPv6 prefix")
+	}
+	for _, cidr := range []string{"2001:db8::/56", "2001:db8::/128"} {
+		info, err := Parse(cidr)
+		if err != nil {
+			t.Fatalf("%s: %v", cidr, err)
+		}
+		report := GCP(info)
+		if report.PrefixOK {
+			t.Fatalf("%s should fail GCP IPv6 /64 check", cidr)
+		}
+		if report.Note == "" {
+			t.Fatalf("%s: expected GCP IPv6 note", cidr)
+		}
 	}
 }

@@ -239,6 +239,68 @@ func TestShowJSONAWSIPv6BadStep(t *testing.T) {
 	}
 }
 
+func TestShowJSONAzureIPv6BadPrefix(t *testing.T) {
+	out, err := run(t, "2001:db8::/56", "--json", "--azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got showJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.Cloud == nil || got.Cloud.PrefixOK {
+		t.Fatalf("expected prefix_ok false: %+v", got.Cloud)
+	}
+	if !strings.Contains(got.Cloud.Note, "/64") {
+		t.Fatalf("note: got %q", got.Cloud.Note)
+	}
+}
+
+func TestShowJSONGCPIPv6BadPrefix(t *testing.T) {
+	out, err := run(t, "2001:db8::/56", "--json", "--gcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got showJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.Cloud == nil || got.Cloud.PrefixOK {
+		t.Fatalf("expected prefix_ok false: %+v", got.Cloud)
+	}
+	if !strings.Contains(got.Cloud.Note, "/64") {
+		t.Fatalf("note: got %q", got.Cloud.Note)
+	}
+}
+
+func TestShowJSONAzureIPv6OK(t *testing.T) {
+	out, err := run(t, "2001:db8::/64", "--json", "--azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got showJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.Cloud == nil || !got.Cloud.PrefixOK || got.Cloud.Provider != "azure" {
+		t.Fatalf("cloud: %+v", got.Cloud)
+	}
+}
+
+func TestShowJSONGCPIPv6OK(t *testing.T) {
+	out, err := run(t, "2001:db8::/64", "--json", "--gcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got showJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if got.Cloud == nil || !got.Cloud.PrefixOK || got.Cloud.Provider != "gcp" {
+		t.Fatalf("cloud: %+v", got.Cloud)
+	}
+}
+
 func TestInvalid(t *testing.T) {
 	_, err := run(t, "not-an-ip")
 	if err == nil {
@@ -330,6 +392,37 @@ func TestSupernet(t *testing.T) {
 	}
 	if !strings.Contains(out, "10.0.0.0/24") {
 		t.Fatalf("%s", out)
+	}
+}
+
+func TestSupernetJSON(t *testing.T) {
+	out, err := run(t, "supernet", "10.0.0.0/25", "10.0.0.128/25", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got supernetJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if len(got.Input) != 2 || got.Input[0] != "10.0.0.0/25" {
+		t.Fatalf("input: %+v", got.Input)
+	}
+	if len(got.CIDRs) != 1 || got.CIDRs[0] != "10.0.0.0/24" {
+		t.Fatalf("cidrs: %+v", got.CIDRs)
+	}
+}
+
+func TestContainsEqualUnmaskedJSON(t *testing.T) {
+	out, err := run(t, "contains", "10.0.0.0/24", "10.0.0.128/24", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got containsJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if !got.Contains || got.Relation != "equal" {
+		t.Fatalf("%+v", got)
 	}
 }
 

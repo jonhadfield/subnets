@@ -17,10 +17,11 @@ func GCP(info Info) CloudReport {
 			note = "VPC IPv4 subnets must be between /8 and /29"
 		}
 	} else {
+		// GCP assigns a /64 IPv6 range per subnet (ULA or GUA).
 		minPrefix = 64
-		prefixOK = info.Bits <= 64
+		prefixOK = info.Bits == 64
 		if !prefixOK {
-			note = "VPC IPv6 subnets are typically /64"
+			note = "VPC IPv6 subnets are /64"
 		}
 	}
 

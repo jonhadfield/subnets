@@ -35,7 +35,8 @@ func Contains(outerStr, innerStr string) (ContainsResult, error) {
 		out.Inner = inner.Addr.String()
 	}
 
-	o, i := outer.Prefix, inner.Prefix
+	// Mask so 10.0.0.0/24 and 10.0.0.128/24 compare as the same network.
+	o, i := outer.Prefix.Masked(), inner.Prefix.Masked()
 	switch {
 	case o == i:
 		out.Contains = true
